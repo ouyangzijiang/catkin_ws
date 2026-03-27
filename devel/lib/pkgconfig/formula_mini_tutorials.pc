@@ -1,0 +1,8 @@
+prefix=/home/tianbot/catkin_ws/devel
+
+Name: formula_mini_tutorials
+Description: Description of formula_mini_tutorials
+Version: 0.1.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

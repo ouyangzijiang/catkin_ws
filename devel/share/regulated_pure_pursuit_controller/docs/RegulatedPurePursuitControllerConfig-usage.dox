@@ -1,0 +1,30 @@
+\subsubsection usage Usage
+\verbatim
+<node name="regulated_pure_pursuit_controller" pkg="regulated_pure_pursuit_controller" type="regulated_pure_pursuit_controller">
+  <param name="acc_lim_linear" type="double" value="2.5" />
+  <param name="min_vel_linear" type="double" value="0.1" />
+  <param name="max_vel_linear" type="double" value="0.5" />
+  <param name="acc_lim_angular" type="double" value="3.2" />
+  <param name="min_vel_angular" type="double" value="0.2" />
+  <param name="max_vel_angular" type="double" value="1.0" />
+  <param name="is_omnidirectional" type="bool" value="True" />
+  <param name="follow_viapoint_orientation" type="bool" value="True" />
+  <param name="use_rotate_to_heading" type="bool" value="True" />
+  <param name="rotate_to_heading_angular_vel" type="double" value="0.5" />
+  <param name="xy_goal_tolerance" type="double" value="0.25" />
+  <param name="yaw_goal_tolerance" type="double" value="0.25" />
+  <param name="use_velocity_scaled_lookahead_dist" type="bool" value="True" />
+  <param name="lookahead_dist" type="double" value="0.6" />
+  <param name="min_lookahead_dist" type="double" value="0.3" />
+  <param name="max_lookahead_dist" type="double" value="0.9" />
+  <param name="lookahead_time" type="double" value="1.5" />
+  <param name="use_curvature_heuristic" type="bool" value="True" />
+  <param name="curvature_gain" type="double" value="1.0" />
+  <param name="curvature_threshold" type="double" value="1.1" />
+  <param name="use_proximity_heuristic" type="bool" value="True" />
+  <param name="proximity_gain" type="double" value="0.5" />
+  <param name="proximity_threshold" type="double" value="0.5" />
+  <param name="transform_tolerance" type="double" value="0.1" />
+</node>
+\endverbatim
+

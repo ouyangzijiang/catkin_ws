@@ -1,0 +1,8 @@
+prefix=/home/tianbot/catkin_ws/devel
+
+Name: regulated_pure_pursuit_controller
+Description: Description of regulated_pure_pursuit_controller
+Version: 1.0.0
+Cflags: -I/home/tianbot/catkin_ws/devel/include -I/home/tianbot/catkin_ws/src/submodule/regulated_pure_pursuit_controller/include
+Libs: -L${prefix}/lib -lregulated_pure_pursuit_controller
+Requires: dynamic_reconfigure geometry_msgs nav_core nav_msgs pluginlib roscpp rospy tf2 tf2_ros

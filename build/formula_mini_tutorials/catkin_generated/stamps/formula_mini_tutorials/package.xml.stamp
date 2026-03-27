@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>formula_mini_tutorials</name>
+  <version>0.1.0</version>
+  <description>Formula Mini 课程教学例程</description>
+
+  <maintainer email="todo@todo.todo">todo</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>rospy</depend>
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>ackermann_msgs</depend>
+
+</package>

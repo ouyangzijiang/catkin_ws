@@ -1,0 +1,149 @@
+<!-- 根标签，表示这是一个 ROS Launch 文件 -->
+<launch>
+
+    <!-- ==================== 参数定义区 ==================== -->
+    
+    <!-- 定义机器人名称参数 'robot_name'。
+         默认值读取环境变量 'TIANRACER_NAME'，如果环境变量不存在，则默认为 'tianracer'。
+         这允许在不同机器人实例间复用该启动文件。 -->
+    <arg name="robot_name" default="$(optenv TIANRACER_NAME tianracer)"/>
+    
+    <!-- 定义是否启动 RViz 可视化工具的参数，默认为不启动 (false)。 -->
+    <arg name="use_rviz"   default="false"/>
+
+    <!-- 定义机器人初始位置的坐标 (x, y) 和朝向角 (a, 即 yaw)，默认都在原点 (0,0,0)。 -->
+    <arg name="init_x" default="0.0" />
+    <arg name="init_y" default="0.0" />
+    <arg name="init_a" default="0.0" />
+
+    <!-- 定义坐标系帧的名称参数：
+         odom: 里程计坐标系
+         base_link: 机器人基座坐标系
+         map: 全局地图坐标系 -->
+    <arg name="odom_frame_id" default="odom"/>
+    <arg name="base_frame_id" default="base_link"/>
+    <arg name="global_frame_id" default="map"/>
+
+    <!-- 定义地图文件名（不含后缀）和地图文件所在的绝对路径。 -->
+    <arg name="map_file" default="test_map"/>
+    <arg name="map_path" default="/home/tianbot/maps"/>
+
+    <!-- ==================== 命名空间组 ==================== -->
+    <!-- 开启一个命名空间组 (group)，所有内部节点的命名空间前缀都为 'robot_name' 的值。
+         例如：如果 robot_name=tianracer，则内部节点发布的 '/map' 话题实际变为 '/tianracer/map'。
+         这是为了支持多机器人系统，避免话题冲突。 -->
+    <group ns="$(arg robot_name)">
+    
+        <!-- ✅ 1. Map Server (地图服务器) -->
+        <!-- 启动 map_server 节点，用于加载静态地图。
+             args 参数拼接了地图路径和文件名，指向 .yaml 配置文件。 -->
+        <node name="map_server" pkg="map_server" type="map_server"
+              args="$(arg map_path)/$(arg map_file).yaml">
+            <!-- 设置地图的帧 ID。注意这里加上了机器人命名空间前缀，变成 '机器人名/map'。 -->
+            <param name="frame_id" value="$(arg robot_name)/map"/>
+        </node>
+
+
+        <!-- ✅ 2. AMCL (自适应蒙特卡洛定位) -->
+        <!-- 包含另一个 launch 文件来启动 AMCL 定位算法。
+             文件路径指向 tianracer_navigation 包中的特定配置文件。 -->
+        <include file="$(find tianracer_navigation)/launch/includes/tianracer_amcl.launch.xml">
+            <!-- 传递初始位置参数给 AMCL -->
+            <arg name="init_x" value="$(arg init_x)"/>
+            <arg name="init_y" value="$(arg init_y)"/>
+            <arg name="init_a" value="$(arg init_a)"/>
+
+            <!-- 传递坐标系帧名称给 AMCL。
+                 关键点：所有帧名称都加上了 '$(arg robot_name)/' 前缀，确保在命名空间内一致。
+                 例如：odom -> tianracer/odom -->
+            <arg name="odom_frame_id" value="$(arg robot_name)/$(arg odom_frame_id)"/>
+            <arg name="base_frame_id" value="$(arg robot_name)/$(arg base_frame_id)"/>
+            <arg name="global_frame_id" value="$(arg robot_name)/map"/>
+        </include>
+
+
+        <!-- ✅ 3. move_base (路径规划与避障核心节点) -->
+        <!-- 启动 move_base 节点，负责全局和局部路径规划。 -->
+        <node pkg="move_base" type="move_base" name="move_base">
+
+            <!-- 加载代价地图 (Costmap) 和 move_base 的行为参数配置文件。
+                 $(find ...) 会自动查找包的路径。 -->
+            <rosparam file="$(find tianracer_navigation)/param/local_costmap_params.yaml"/>
+            <rosparam file="$(find tianracer_navigation)/param/global_costmap_params.yaml"/>
+            <rosparam file="$(find tianracer_navigation)/param/move_base_params.yaml"/>
+
+            <!-- 注释说明：强制统一 TF 变换树的帧名称，确保与 AMCL 和 Map Server 一致。 -->
+            
+            <!-- 设置全局代价地图的参考帧为 '机器人名/map' -->
+            <param name="global_costmap/global_frame" value="$(arg robot_name)/map"/>
+            <!-- 设置局部代价地图的参考帧为 '机器人名/odom' -->
+            <param name="local_costmap/global_frame"  value="$(arg robot_name)/odom"/>
+            <!-- 设置全局代价地图的机器人基座帧为 '机器人名/base_link' -->
+            <param name="global_costmap/robot_base_frame" value="$(arg robot_name)/base_link"/>
+            <!-- 设置局部代价地图的机器人基座帧为 '机器人名/base_link' -->
+            <param name="local_costmap/robot_base_frame"  value="$(arg robot_name)/base_link"/>
+
+        </node>
+
+
+        <!-- ✅ 4. L1 Controller (轨迹跟踪控制器) -->
+        <!-- 启动一个自定义的 Python 节点 'L6_4_02_l1_controller.py'，属于 formula_mini_tutorials 包。
+             这是一个基于 L1 导航算法的控制器，用于将路径点转换为速度指令。
+             output="screen" 表示将该节点的日志输出打印到终端屏幕。 -->
+        <node pkg="formula_mini_tutorials" type="L6_4_02_l1_controller.py"
+              name="l1_controller" output="screen">
+
+            <!-- 传入机器人名称参数 -->
+            <param name="robot_name" value="$(arg robot_name)"/>
+            <!-- L1 控制器参数：
+                 L: 前视距离 (Lookahead distance)，单位米
+                 lfw: 前轮轴距相关参数 (Lookforward wheel distance?) -->
+            <param name="L" value="0.26"/>
+            <param name="lfw" value="0.13"/>
+
+            <!-- 速度与控制增益参数：
+                 Vcmd: 命令速度
+                 base_speed: 基础速度
+                 angle_gain: 角度控制增益 (负值通常表示反馈方向)
+                 goal_radius: 到达目标点的判定半径
+                 controller_freq: 控制器运行频率 (Hz) -->
+            <param name="Vcmd" value="1.0"/>
+            <param name="base_speed" value="1.0"/>
+            <param name="angle_gain" value="-3.5"/>
+            <param name="goal_radius" value="0.05"/>
+            <param name="controller_freq" value="20"/>
+
+            <!-- 话题重映射 (Remap)：
+                 将节点订阅的默认路径话题 'move_base_node/NavfnROS/plan' 
+                 重映射到实际的 'move_base/NavfnROS/plan'。
+                 这是因为 move_base 节点名是 'move_base' 而不是默认的 'move_base_node'。 -->
+            <remap from="move_base_node/NavfnROS/plan" to="move_base/NavfnROS/plan"/>
+        </node>
+
+
+    </group>
+    <!-- 命名空间组结束。以下节点不在该命名空间内（或者需要特殊处理以与命名空间交互） -->
+
+    <!-- ==================== 可视化工具 (RViz) ==================== -->
+    <!-- 启动 RViz 可视化界面。
+         if="$(arg use_rviz)" 表示只有当 use_rviz 参数为 true 时才启动此节点。
+         -d 参数指定了要加载的配置文件 (.rviz)。 -->
+    <node pkg="rviz" type="rviz" name="rviz"
+                args="-d $(find tianracer_rviz)/rviz_cfg/tianbot_amcl.rviz"
+                if="$(arg use_rviz)">
+        
+        <!-- 设置 RViz 的固定参考帧 (Fixed Frame) 为带命名空间的 map 帧。 -->
+        <param name="fixed_frame" value="$(arg robot_name)/map"/>
+        
+        <!-- 重映射初始位姿话题：
+             RViz 默认发布到 '/initialpose' (全局命名空间)。
+             这里将其重映射到 '/机器人名/initialpose'，以便命名空间内的 AMCL 节点能收到初始化请求。 -->
+        <remap from="/initialpose" to="/$(arg robot_name)/initialpose"/>
+        
+        <!-- 重映射 2D 导航目标话题：
+             RViz 默认发布到 '/move_base_simple/goal'。
+             这里将其重映射到 '/机器人名/move_base_simple/goal'，以便命名空间内的 move_base 节点能收到目标点。 -->
+        <remap from="/move_base_simple/goal" to="/$(arg robot_name)/move_base_simple/goal"/>
+    </node>
+
+</launch>

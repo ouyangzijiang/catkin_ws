@@ -1,0 +1,176 @@
+<?xml version="1.0"?>
+    <!-- 这个算法只能小幅度转向，比如转45度以内的转向，因为该算法不会后退调整，只会一直前进，导致它能转向的幅度很小 -->
+<!-- 
+  - map_server
+  - amcl
+  - move_base
+  - cmd_vel to ackermann_cmd
+  - rviz view
+ -->
+<launch>
+    <arg name="robot_name" default="$(optenv TIANRACER_NAME tianracer)" doc="robot name [tianracer_No1, tianracer_No2, tianracer_No3, ...]"/>
+    <arg name="fixed_frame" value="$(arg robot_name)/map"/>
+    <arg name="use_rviz" default="false" />
+    
+    <!-- for amcl -->
+    <!-- <arg name="init_x" default="0.0" />
+    <arg name="init_y" default="0.0" />
+    <arg name="init_a" default="0.0" />
+    <arg name="base" default="$(optenv TIANRACER_BASE compact)" /> -->
+    <!-- for Map server -->
+    <!-- <arg name="map_file" default="$(optenv TIANRACER_MAP_FILE map)" />
+    <arg name="map_path" default="$(find tianracer_slam)/maps" /> -->
+    <!-- Define various frame and topic IDs with default values -->
+    <arg name="odom_frame_id" default="odom"/>
+    <arg name="base_frame_id" default="base_footprint"/>
+    <arg name="global_frame_id" default="map"/>
+    <arg name="laser_frame_id" default="laser"/>
+    <arg name="odom_topic" default="odom" />
+    <arg name="laser_topic" default="scan" />
+    <arg name="depth_points_topic" default="camera/depth_registered/points" />
+    <arg name="lidar_points_topic" default="lidar_points" /> 
+
+    <!-- 开启命名空间组，所有内部节点的话题和参数前缀都将加上机器人名称 (例如: /tianracer/...) -->
+
+<group ns="$(arg robot_name)">
+
+
+    <!-- ==================== Navigation (move_base 核心节点) ==================== -->
+
+    <!-- 启动 move_base 节点，这是导航栈的核心。
+
+         respawn="false": 节点崩溃后不自动重启。
+
+         output="screen": 将日志输出到终端，方便调试。 -->
+
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+
+        
+
+        <!-- 加载 move_base 的基础行为参数 (如恢复行为、振荡超时等) -->
+
+        <rosparam file="$(find tianracer_navigation)/param/move_base_params.yaml" command="load"/>
+
+        
+
+        <!-- 加载全局代价地图 (Global Costmap) 和 局部代价地图 (Local Costmap) 的公共参数。
+
+             注意：这里使用了 'teb_carlike' 文件夹下的参数，说明是为类车机器人优化的。
+
+             ns="global_costmap" 和 ns="local_costmap" 表示将这些参数加载到对应的命名空间下。
+
+             通常包含障碍物层、膨胀半径等通用设置。 -->
+
+        <rosparam file="$(find tianracer_navigation)/param/teb_carlike/costmap_common_params.yaml" command="load" ns="global_costmap" />
+
+        <rosparam file="$(find tianracer_navigation)/param/teb_carlike/costmap_common_params.yaml" command="load" ns="local_costmap" />
+
+        
+
+        <!-- 加载局部代价地图的特有参数 (如更新频率、传感器来源、滚动窗口大小等) -->
+
+        <rosparam file="$(find tianracer_navigation)/param/teb_carlike/local_costmap_params.yaml" command="load" />
+        <!-- 加载全局代价地图的特有参数 (如静态地图源、尺寸等) -->
+
+        <rosparam file="$(find tianracer_navigation)/param/teb_carlike/global_costmap_params.yaml" command="load" />
+
+
+        <!-- 【第三方插件关键部分 1】加载 Regulated Pure Pursuit (RPP) 控制器的参数。
+
+             这是一个比传统 DWA 更适合高速或类车机器人的轨迹跟踪算法。
+
+             文件来自 'pure_pursuit' 包。 -->
+        <rosparam file="$(find pure_pursuit)/param/regulated_pure_pursuit_params.yaml" command="load" />
+        <!-- 加载全局规划器 (Global Planner) 的参数，这里似乎仍沿用了 TEB 的配置结构或命名习惯 -->
+
+        <rosparam file="$(find tianracer_navigation)/param/teb_carlike/global_planner_params.yaml" command="load" />
+
+            
+        <!-- 【关键配置】指定使用的局部规划器插件。
+             而是指定了 'regulated_pure_pursuit_controller' 包中的 'RegulatedPurePursuitController' 类。
+             这必须与上面加载的 RPP 参数文件对应。 -->
+        <param name="base_local_planner" value="regulated_pursuit_controller/RegulatedPurePursuitController" />
+
+        <!-- 【动态参数】根据机器人底盘类型 ('base' 变量的值) 设置机器人的足迹 (Footprint)。
+             足迹用于代价地图中判断碰撞。
+             格式为 [[x1, y1], [x2, y2], ...] 的多边形顶点坐标。
+             如果 base == 'compact' (紧凑型): 设置较小的矩形足迹。 -->
+        <param if="$(eval base=='compact')" name="footprint" value="[[0.34,0.1],[0.34,-0.1],[-0.05,-0.1],[-0.05,0.1]]" />
+        <!-- 如果 base == 'standard' (标准型): 设置中等大小的足迹。 -->
+        <param if="$(eval base=='standard')" name="footprint" value="[[0.42,0.14],[0.42,-0.14],[-0.12,-0.14],[-0.12,0.14]]" />
+        <!-- 如果 base == 'fullsize' (全尺寸型): 设置较大的足迹。 -->
+        <param if="$(eval base=='fullsize')" name="footprint" value="[[0.8,0.27],[0.8,-0.27],[-0.2,-0.27],[-0.2,0.27]]" />
+
+        
+
+        <!-- 【类车机器人特性】禁止原地旋转清除障碍物。
+
+             阿克曼转向机器人不能像差速机器人那样原地打转 (rotate in place)。
+
+             设置为 false 防止 move_base 尝试执行不可能的原地旋转恢复动作。 -->
+
+        <param name="clearing_rotation_allowed" value="false" /> 
+
+
+        <!-- ==================== 坐标系与话题重映射 (本地化配置) ==================== -->
+
+        <!-- 以下参数显式地将代价地图的帧和话题绑定到当前机器人的命名空间，确保多机器人不冲突 -->
+        <!-- 局部代价地图：设置机器人基座帧 (例如: /tianracer/base_link) -->
+        <param name="local_costmap/robot_base_frame" value="$(arg robot_name)/$(arg base_frame_id)"/>
+        <!-- 局部代价地图：设置全局参考帧为里程计帧 (例如: /tianracer/odom)，用于局部滚动窗口 -->
+        <param name="local_costmap/global_frame" value="$(arg robot_name)/$(arg odom_frame_id)"/>
+        <!-- 局部代价地图：设置激光雷达传感器的帧 ID -->
+        <param name="local_costmap/scan/sensor_frame" value="$(arg robot_name)/$(arg laser_frame_id)"/>
+        <!-- 局部代价地图：订阅带命名空间的激光雷达扫描话题 (例如: /tianracer/scan) -->
+        <param name="local_costmap/scan/topic" value="/$(arg robot_name)/$(arg laser_topic)"/>
+        <!-- 局部代价地图：订阅深度相机点云话题 (如果有) -->
+        <param name="local_costmap/depth_points/topic" value="/$(arg robot_name)/$(arg depth_points_topic)"/>
+        <!-- 局部代价地图：订阅激光雷达点云话题 (如果有) -->
+        <param name="local_costmap/lidar_points/topic" value="/$(arg robot_name)/$(arg lidar_points_topic)"/>
+        <!-- 全局代价地图：设置机器人基座帧 -->
+        <param name="global_costmap/robot_base_frame" value="$(arg robot_name)/$(arg base_frame_id)"/>
+        <!-- 全局代价地图：设置全局参考帧为地图帧 (例如: /tianracer/map) -->
+        <param name="global_costmap/global_frame" value="$(arg robot_name)/$(arg global_frame_id)"/>
+        <!-- 全局代价地图：设置传感器帧和话题 (同上，用于在全局地图中标记障碍物) -->
+        <param name="global_costmap/scan/sensor_frame" value="$(arg robot_name)/$(arg laser_frame_id)"/>
+        <param name="global_costmap/scan/topic" value="/$(arg robot_name)/$(arg laser_topic)"/>
+        <param name="global_costmap/depth_points/topic" value="/$(arg robot_name)/$(arg depth_points_topic)"/>
+        <param name="global_costmap/lidar_points/topic" value="/$(arg robot_name)/$(arg lidar_points_topic)"/>
+
+        
+
+        <!-- 【TEB 遗留/兼容配置】指定里程计话题。
+             虽然主要控制器换成了 RPP，但这里可能仍有参数引用了 TEB 的命名空间，
+             或者该参数被其他辅助节点使用。指向带命名空间的里程计话题。 -->
+        <param name="TebLocalPlannerROS/odom_topic" value="/$(arg robot_name)/$(arg odom_topic)"/>
+    </node>
+
+
+    <!-- ==================== 速度命令转换 (cmd_vel to ackermann_cmd) ==================== -->
+
+    <!-- 启动自定义节点 'cmd_vel_to_ackermann_drive.py'。
+         背景：ROS 导航栈 (move_base) 默认输出几何消息 'geometry_msgs/Twist' (cmd_vel)，包含线速度和角速度。
+         但阿克曼转向底盘通常需要 'ackermann_msgs/AckermannDrive' 消息，包含速度和转向角。
+         此节点充当转换器，将 Twist 转换为 Ackermann 指令。 -->
+    <node pkg="formula_mini_tutorials" type="cmd_vel_to_ackermann_drive.py" name="vel_to_ackermann" output="screen">
+        <!-- 订阅 move_base 输出的速度指令话题 (带命名空间) -->
+        <param name="twist_cmd_topic" value="/$(arg robot_name)/cmd_vel" />
+        <!-- 发布转换后的阿克曼驱动指令话题 (带命名空间)，底层驱动节点将订阅此话题 -->
+        <param name="ackermann_cmd_topic" value="/$(arg robot_name)/ackermann_cmd" />
+        <!-- 最小速度阈值：低于此速度视为停止，避免微小抖动导致转向计算错误 -->
+        <param name="min_speed_threshold" value="0.1" />
+        <!-- 【运动学参数】根据底盘类型设置轴距 (wheelbase)
+             轴距是计算转向角的关键参数 (delta = atan(L * omega / v))。
+             如果 base == 'compact': 轴距 0.255 米 -->
+        <param if="$(eval base=='compact')" name="wheelbase" value="0.255" />
+        <!-- 如果 base == 'standard': 轴距 0.33 米 -->
+        <param if="$(eval base=='standard')" name="wheelbase" value="0.33" />
+        <!-- 如果 base == 'fullsize': 轴距 0.6 米 -->
+        <param if="$(eval base=='fullsize')" name="wheelbase" value="0.6" />
+    </node>        
+</group>
+    
+    <!--  Visualisation -->
+    <!-- <node ns="$(arg robot_name)" name="rviz" pkg="rviz" type="rviz" args="-d $(find tianracer_rviz)/rviz_cfg/teb_navigation.rviz -f $(arg fixed_frame)" if="$(arg use_rviz)" /> -->
+
+</launch>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- ROS1 Python示例：发布者与订阅者一键启动 -->
+    
+    <!-- 发布者节点：发布消息到 /chatter -->
+    <node name="chatter_pub" pkg="formula_mini_tutorials" type="L2_1_01_pub_chatter.py" output="screen">
+        <param name="group_id" value="Demo"/>
+        <param name="rate" value="1.0"/>
+    </node>
+
+    <!-- 订阅者节点（使用 spin()）：接收 /chatter 消息 -->
+    <node name="chatter_sub_spin" pkg="formula_mini_tutorials" type="L2_1_02_sub_chatter_spin.py" output="screen"/>
+
+    <!-- 订阅者节点（不使用 spin()）：3秒后退出 -->
+    <node name="chatter_sub_nospin" pkg="formula_mini_tutorials" type="L2_1_03_sub_chatter_no_spin.py" output="screen"/>
+
+</launch>

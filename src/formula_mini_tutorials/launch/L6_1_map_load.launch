@@ -1,0 +1,18 @@
+<!--
+  L6-1 教学用：加载地图文件
+  用法: roslaunch formula_mini_tutorials L6_1_map_load.launch map_file:=/path/to/your_map.yaml
+
+  功能：启动 map_server 加载指定地图文件，发布到 /tianracer/map 话题。
+  学生可在 RViz 中添加 Map 显示来查看地图（需将 Map 的 Topic 改为 /tianracer/map）。
+-->
+<launch>
+    <arg name="robot_name" default="$(optenv TIANRACER_NAME tianracer)" doc="机器人命名空间"/>
+    <arg name="map_file" doc="地图 .yaml 文件的完整路径（昨天建的地图）"/>
+    <group ns="$(arg robot_name)">
+        <!-- 地图服务器：读取 .yaml + .pgm，发布到 /tianracer/map -->
+        <node name="map_server" pkg="map_server" type="map_server"
+              args="$(arg map_file)" output="screen">
+            <param name="frame_id" value="$(arg robot_name)/map"/>
+        </node>
+    </group>
+</launch>
